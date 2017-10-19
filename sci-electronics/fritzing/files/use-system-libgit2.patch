@@ -1,5 +1,5 @@
---- phoenix.pro.orig	2016-06-01 19:48:27.000000000 -0000
-+++ phoenix.pro	2017-10-14 17:34:50.105073025 -0000
+--- a/phoenix.pro	2016-06-01 19:48:27.000000000 -0000
++++ b/phoenix.pro	2017-10-14 17:34:50.105073025 -0000
 @@ -160,60 +160,7 @@
  RC_FILE = fritzing.rc
  RESOURCES += phoenixresources.qrc
