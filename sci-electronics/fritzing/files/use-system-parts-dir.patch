@@ -1,0 +1,10 @@
+--- fritzing.desktop	2017-10-19 12:41:20.942505742 +0300
++++ fritzing.desktop.orig	2017-10-19 12:40:47.306361439 +0300
+@@ -3,7 +3,6 @@
+ Name=Fritzing
+ GenericName=Fritzing
+ Comment=Electronic Design Automation software
+-Path=/usr/share/fritzing/parts
+ Exec=Fritzing
+ Icon=icons/fritzing_icon.png
+ Terminal=false
