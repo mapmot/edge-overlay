@@ -26,7 +26,7 @@ COMMON_DEPEND="
 	dev-libs/expat:=
 	dev-libs/glib:2
 	system-icu? ( >=dev-libs/icu-59:= )
-	>=dev-libs/libxml2-2.9.5:=[icu]
+	>=dev-libs/libxml2-2.9.4-r3:=[icu]
 	dev-libs/libxslt:=
 	dev-libs/nspr:=
 	>=dev-libs/nss-3.14.3:=
@@ -35,7 +35,7 @@ COMMON_DEPEND="
 	>=media-libs/alsa-lib-1.0.19:=
 	media-libs/fontconfig:=
 	media-libs/freetype:=
-	>=media-libs/harfbuzz-1.4.2:=[icu(-)]
+	>=media-libs/harfbuzz-1.5.0:=[icu(-)]
 	media-libs/libjpeg-turbo:=
 	media-libs/libpng:=
 	system-libvpx? ( media-libs/libvpx:=[postproc,svc] )
@@ -96,9 +96,8 @@ DEPEND="${COMMON_DEPEND}
 	dev-lang/perl
 	>=dev-util/gperf-3.0.3
 	>=dev-util/ninja-1.7.2
-	>=net-libs/nodejs-4.6.1
+	>=net-libs/nodejs-6.9.4
 	sys-apps/hwids[usb(+)]
-	tcmalloc? ( !<sys-apps/sandbox-2.11 )
 	>=sys-devel/bison-2.4.3
 	sys-devel/flex
 	virtual/pkgconfig
@@ -144,17 +143,13 @@ GTK+ icon theme.
 "
 
 PATCHES=(
-	"${FILESDIR}/${PN}-widevine-r1.patch"
-	"${FILESDIR}/${PN}-FORTIFY_SOURCE-r2.patch"
-	"${FILESDIR}/${PN}-gcc5-r2.patch"
-	"${FILESDIR}/${PN}-glibc2.26-r1.patch"
-	"${FILESDIR}/${PN}-gn-bootstrap-r19.patch"
-	"${FILESDIR}/${PN}-sysroot-r1.patch"
-	"${FILESDIR}/d60511c.patch"
-	"${FILESDIR}/specify-max-resolution.patch"
+	"${FILESDIR}/chromium-widevine-r1.patch"
+	"${FILESDIR}/chromium-FORTIFY_SOURCE-r2.patch"
+	"${FILESDIR}/chromium-webrtc-r0.patch"
+	"${FILESDIR}/chromium-math-includes-r0.patch"
+	"${FILESDIR}/chromium-${PV}-gpu_lists_version.h.patch"
+	"${FILESDIR}/chromium-gcc5-r5.patch"
 )
-
-
 
 pre_build_checks() {
 	if [[ ${MERGE_TYPE} != binary ]]; then
@@ -212,7 +207,6 @@ src_prepare() {
 		base/third_party/valgrind
 		base/third_party/xdg_mime
 		base/third_party/xdg_user_dirs
-		breakpad/src/third_party/curl
 		chrome/third_party/mozilla_security_manager
 		courgette/third_party
 		net/third_party/mozilla_security_manager
@@ -221,24 +215,26 @@ src_prepare() {
 		third_party/analytics
 		third_party/angle
 		third_party/angle/src/common/third_party/base
-		third_party/angle/src/common/third_party/murmurhash
+		third_party/angle/src/common/third_party/smhasher
 		third_party/angle/src/third_party/compiler
 		third_party/angle/src/third_party/libXNVCtrl
 		third_party/angle/src/third_party/trace_event
 		third_party/blink
 		third_party/boringssl
+		third_party/breakpad
+		third_party/breakpad/breakpad/src/third_party/curl
 		third_party/brotli
 		third_party/cacheinvalidation
 		third_party/catapult
+		third_party/catapult/common/py_vulcanize/third_party/rcssmin
+		third_party/catapult/common/py_vulcanize/third_party/rjsmin
 		third_party/catapult/third_party/polymer
-		third_party/catapult/third_party/py_vulcanize
-		third_party/catapult/third_party/py_vulcanize/third_party/rcssmin
-		third_party/catapult/third_party/py_vulcanize/third_party/rjsmin
 		third_party/catapult/tracing/third_party/d3
 		third_party/catapult/tracing/third_party/gl-matrix
 		third_party/catapult/tracing/third_party/jszip
 		third_party/catapult/tracing/third_party/mannwhitneyu
 		third_party/catapult/tracing/third_party/oboe
+		third_party/catapult/tracing/third_party/pako
 		third_party/ced
 		third_party/cld_2
 		third_party/cld_3
@@ -276,6 +272,7 @@ src_prepare() {
 		third_party/lzma_sdk
 		third_party/markupsafe
 		third_party/mesa
+		third_party/metrics_proto
 		third_party/modp_b64
 		third_party/mt19937ar
 		third_party/node
@@ -377,7 +374,7 @@ src_configure() {
 
 	# Disable nacl, we can't build without pnacl (http://crbug.com/269560).
 	myconf_gn+=" enable_nacl=false"
-	
+
 	# Use system-provided libraries.
 	# TODO: freetype (https://bugs.chromium.org/p/pdfium/issues/detail?id=733).
 	# TODO: use_system_hunspell (upstream changes needed).
@@ -389,7 +386,8 @@ src_configure() {
 	# libevent: https://bugs.gentoo.org/593458
 	local gn_system_libraries=(
 		flac
-		harfbuzz-ng
+		# Need harfbuzz_from_pkgconfig target
+		#harfbuzz-ng
 		libdrm
 		libjpeg
 		libpng
@@ -413,6 +411,9 @@ src_configure() {
 	fi
 	build/linux/unbundle/replace_gn_files.py --system-libraries "${gn_system_libraries[@]}" || die
 
+	# See dependency logic in third_party/BUILD.gn
+	myconf_gn+=" use_system_harfbuzz=true"
+
 	# Optional dependencies.
 	myconf_gn+=" enable_hangout_services_extension=$(usex hangouts true false)"
 	myconf_gn+=" enable_widevine=$(usex widevine true false)"
@@ -421,7 +422,7 @@ src_configure() {
 	myconf_gn+=" use_gnome_keyring=$(usex gnome-keyring true false)"
 	myconf_gn+=" use_kerberos=$(usex kerberos true false)"
 	myconf_gn+=" use_pulseaudio=$(usex pulseaudio true false)"
-	
+
 	# USE-enable VAAPI
 	myconf_gn+=" use_vaapi=$(usex vaapi true false)"
 
@@ -614,9 +615,6 @@ src_install() {
 
 	insinto "${CHROMIUM_HOME}/swiftshader"
 	doins out/Release/swiftshader/*.so
-
-	newman out/Release/chrome.1 chromium.1
-	newman out/Release/chrome.1 chromium-browser.1
 
 	# Install icons and desktop entry.
 	local branding size
