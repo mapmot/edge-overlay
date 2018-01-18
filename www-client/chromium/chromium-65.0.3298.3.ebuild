@@ -1,4 +1,4 @@
-# Copyright 1999-2017 Gentoo Foundation
+# Copyright 1999-2018 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 EAPI="6"
@@ -17,25 +17,27 @@ SRC_URI="https://commondatastorage.googleapis.com/chromium-browser-official/${P}
 LICENSE="BSD"
 SLOT="0"
 KEYWORDS="~amd64 ~arm ~arm64 ~x86"
-IUSE="component-build cups gnome-keyring +hangouts kerberos neon pic +proprietary-codecs pulseaudio selinux +suid +system-ffmpeg +system-icu +system-libvpx +tcmalloc vaapi widevine"
+IUSE="component-build cups gnome-keyring +hangouts jumbo-build kerberos neon pic +proprietary-codecs pulseaudio selinux +suid +system-ffmpeg +system-icu +system-libvpx +tcmalloc vaapi widevine"
 RESTRICT="!system-ffmpeg? ( proprietary-codecs? ( bindist ) )"
 
 COMMON_DEPEND="
+	app-accessibility/at-spi2-atk:2
 	app-arch/bzip2:=
 	cups? ( >=net-print/cups-1.3.11:= )
+	dev-libs/atk
 	dev-libs/expat:=
 	dev-libs/glib:2
 	system-icu? ( >=dev-libs/icu-59:= )
 	>=dev-libs/libxml2-2.9.4-r3:=[icu]
 	dev-libs/libxslt:=
 	dev-libs/nspr:=
-	>=dev-libs/nss-3.14.3:=
+	>=dev-libs/nss-3.26:=
 	>=dev-libs/re2-0.2016.05.01:=
 	gnome-keyring? ( >=gnome-base/libgnome-keyring-3.12:= )
 	>=media-libs/alsa-lib-1.0.19:=
 	media-libs/fontconfig:=
 	media-libs/freetype:=
-	>=media-libs/harfbuzz-1.5.0:=[icu(-)]
+	>=media-libs/harfbuzz-1.6.0:=[icu(-)]
 	media-libs/libjpeg-turbo:=
 	media-libs/libpng:=
 	system-libvpx? ( media-libs/libvpx:=[postproc,svc] )
@@ -146,9 +148,10 @@ PATCHES=(
 	"${FILESDIR}/chromium-widevine-r1.patch"
 	"${FILESDIR}/chromium-FORTIFY_SOURCE-r2.patch"
 	"${FILESDIR}/chromium-webrtc-r0.patch"
-	"${FILESDIR}/chromium-math-includes-r0.patch"
-	"${FILESDIR}/chromium-${PV}-gpu_lists_version.h.patch"
-	"${FILESDIR}/chromium-gcc5-r5.patch"
+	"${FILESDIR}/chromium-memcpy-r0.patch"
+	"${FILESDIR}/chromium-clang-r2.patch"
+	"${FILESDIR}/chromium-gcc-u2f.patch"
+	"${FILESDIR}/chromium-intel-vaapi_r16.diff.patch"
 )
 
 pre_build_checks() {
@@ -185,13 +188,13 @@ pkg_pretend() {
 pkg_setup() {
 	pre_build_checks
 
-	# Make sure the build system will use the right python, bug #344367.
-	python-any-r1_pkg_setup
-
 	chromium_suid_sandbox_check_kernel_config
 }
 
 src_prepare() {
+	# Calling this here supports resumption via FEATURES=keepwork
+	python_setup
+
 	default
 
 	mkdir -p third_party/node/linux/node-linux-x64/bin || die
@@ -221,6 +224,7 @@ src_prepare() {
 		third_party/angle/src/third_party/trace_event
 		third_party/blink
 		third_party/boringssl
+		third_party/boringssl/src/third_party/fiat
 		third_party/breakpad
 		third_party/breakpad/breakpad/src/third_party/curl
 		third_party/brotli
@@ -236,7 +240,6 @@ src_prepare() {
 		third_party/catapult/tracing/third_party/oboe
 		third_party/catapult/tracing/third_party/pako
 		third_party/ced
-		third_party/cld_2
 		third_party/cld_3
 		third_party/crc32c
 		third_party/cros_system_api
@@ -260,6 +263,8 @@ src_prepare() {
 		third_party/leveldatabase
 		third_party/libXNVCtrl
 		third_party/libaddressinput
+		third_party/libaom
+		third_party/libaom/source/libaom/third_party/x86inc
 		third_party/libjingle
 		third_party/libphonenumber
 		third_party/libsecret
@@ -294,6 +299,7 @@ src_prepare() {
 		third_party/protobuf
 		third_party/protobuf/third_party/six
 		third_party/qcms
+		third_party/s2cellid
 		third_party/sfntly
 		third_party/skia
 		third_party/skia/third_party/gif
@@ -316,6 +322,7 @@ src_prepare() {
 		third_party/zlib/google
 		url/third_party/mozilla
 		v8/src/third_party/valgrind
+		v8/src/third_party/utf8-decoder
 		v8/third_party/inspector_protocol
 
 		# gyp -> gn leftovers
@@ -361,6 +368,9 @@ bootstrap_gn() {
 }
 
 src_configure() {
+	# Calling this here supports resumption via FEATURES=keepwork
+	python_setup
+
 	local myconf_gn=""
 
 	# GN needs explicit config for Debug/Release as opposed to inferring it from build directory.
@@ -370,13 +380,16 @@ src_configure() {
 	# for development and debugging.
 	myconf_gn+=" is_component_build=$(usex component-build true false)"
 
+	# https://chromium.googlesource.com/chromium/src/+/lkcr/docs/jumbo.md
+	myconf_gn+=" use_jumbo_build=$(usex jumbo-build true false)"
+
 	myconf_gn+=" use_allocator=$(usex tcmalloc \"tcmalloc\" \"none\")"
 
 	# Disable nacl, we can't build without pnacl (http://crbug.com/269560).
 	myconf_gn+=" enable_nacl=false"
 
 	# Use system-provided libraries.
-	# TODO: freetype (https://bugs.chromium.org/p/pdfium/issues/detail?id=733).
+	# TODO: freetype -- remove sources (https://bugs.chromium.org/p/pdfium/issues/detail?id=733).
 	# TODO: use_system_hunspell (upstream changes needed).
 	# TODO: use_system_libsrtp (bug #459932).
 	# TODO: use_system_protobuf (bug #525560).
@@ -386,6 +399,8 @@ src_configure() {
 	# libevent: https://bugs.gentoo.org/593458
 	local gn_system_libraries=(
 		flac
+		fontconfig
+		freetype
 		# Need harfbuzz_from_pkgconfig target
 		#harfbuzz-ng
 		libdrm
@@ -440,6 +455,9 @@ src_configure() {
 	# Do not use bundled clang.
 	# Trying to use gold results in linker crash.
 	myconf_gn+=" use_gold=false use_sysroot=false linux_use_bundled_binutils=false use_custom_libcxx=false"
+
+	# Disable forced lld, bug 641556
+	myconf_gn+=" use_lld=false"
 
 	ffmpeg_branding="$(usex proprietary-codecs Chrome Chromium)"
 	myconf_gn+=" proprietary_codecs=$(usex proprietary-codecs true false)"
@@ -537,29 +555,35 @@ src_configure() {
 	bootstrap_gn
 
 	einfo "Configuring Chromium..."
-	set -- out/Release/gn gen --args="${myconf_gn}" out/Release
+	set -- out/Release/gn gen --args="${myconf_gn} ${EXTRA_GN}" out/Release
 	echo "$@"
 	"$@" || die
 }
 
 src_compile() {
-	local ninja_targets="chrome chromedriver"
-	if use suid; then
-		ninja_targets+=" chrome_sandbox"
-	fi
+	# Calling this here supports resumption via FEATURES=keepwork
+	python_setup
 
 	# Build mksnapshot and pax-mark it.
-	if tc-is-cross-compiler; then
-		eninja -C out/Release host/mksnapshot || die
-		pax-mark m out/Release/host/mksnapshot
-	else
-		eninja -C out/Release mksnapshot || die
-		pax-mark m out/Release/mksnapshot
-	fi
+	local x
+	for x in mksnapshot v8_context_snapshot_generator; do
+		if tc-is-cross-compiler; then
+			eninja -C out/Release "host/${x}"
+			pax-mark m "out/Release/host/${x}"
+		else
+			eninja -C out/Release "${x}"
+			pax-mark m "out/Release/${x}"
+		fi
+	done
+
+	# Work around circular dep issue
+	# https://chromium-review.googlesource.com/c/chromium/src/+/617768
+	eninja -C out/Release gen/ui/accessibility/ax_enums.h
 
 	# Even though ninja autodetects number of CPUs, we respect
 	# user's options, for debugging with -j 1 or any other reason.
-	eninja -C out/Release ${ninja_targets} || die
+	eninja -C out/Release chrome chromedriver
+	use suid && eninja -C out/Release chrome_sandbox
 
 	pax-mark m out/Release/chrome
 }
@@ -613,8 +637,10 @@ src_install() {
 	doins -r out/Release/locales
 	doins -r out/Release/resources
 
-	insinto "${CHROMIUM_HOME}/swiftshader"
-	doins out/Release/swiftshader/*.so
+	if [[ -d out/Release/swiftshader ]]; then
+		insinto "${CHROMIUM_HOME}/swiftshader"
+		doins out/Release/swiftshader/*.so
+	fi
 
 	# Install icons and desktop entry.
 	local branding size
