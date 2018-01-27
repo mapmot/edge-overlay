@@ -150,8 +150,10 @@ PATCHES=(
 	"${FILESDIR}/chromium-webrtc-r0.patch"
 	"${FILESDIR}/chromium-memcpy-r0.patch"
 	"${FILESDIR}/chromium-clang-r2.patch"
-	"${FILESDIR}/chromium-gcc-u2f.patch"
-	"${FILESDIR}/chromium-intel-vaapi_r16.diff.patch"
+	"${FILESDIR}/chromium-gn-r0.patch"
+	"${FILESDIR}/chromium-vulkan-r0.patch"
+	"${FILESDIR}/chromium-gcc-r0.patch"
+	"${FILESDIR}/enable_vaapi_on_linux_2.diff"
 )
 
 pre_build_checks() {
@@ -433,7 +435,6 @@ src_configure() {
 	myconf_gn+=" enable_hangout_services_extension=$(usex hangouts true false)"
 	myconf_gn+=" enable_widevine=$(usex widevine true false)"
 	myconf_gn+=" use_cups=$(usex cups true false)"
-	myconf_gn+=" use_gconf=false"
 	myconf_gn+=" use_gnome_keyring=$(usex gnome-keyring true false)"
 	myconf_gn+=" use_kerberos=$(usex kerberos true false)"
 	myconf_gn+=" use_pulseaudio=$(usex pulseaudio true false)"
@@ -637,10 +638,8 @@ src_install() {
 	doins -r out/Release/locales
 	doins -r out/Release/resources
 
-	if [[ -d out/Release/swiftshader ]]; then
-		insinto "${CHROMIUM_HOME}/swiftshader"
-		doins out/Release/swiftshader/*.so
-	fi
+	insinto "${CHROMIUM_HOME}/swiftshader"
+	doins out/Release/swiftshader/*.so
 
 	# Install icons and desktop entry.
 	local branding size
