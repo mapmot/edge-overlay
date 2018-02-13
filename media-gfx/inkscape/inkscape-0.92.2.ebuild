@@ -34,6 +34,7 @@ PATCHES=(
 	"${FILESDIR}/${PN}-0.91_pre3-exif.patch"
 	"${FILESDIR}/${PN}-0.91_pre3-sk-man.patch"
 	"${FILESDIR}/${PN}-0.48.4-epython.patch"
+	"${FILESDIR}/poppler-0.58.patch"
 )
 
 S=${WORKDIR}/${MY_P}
