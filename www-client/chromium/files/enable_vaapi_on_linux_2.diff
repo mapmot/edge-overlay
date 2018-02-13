@@ -60,7 +60,7 @@ index ec61c1b..62c910a 100644
       flag_descriptions::kV8CacheOptionsDescription, kOsAll,
       MULTI_VALUE_TYPE(kV8CacheOptionsChoices)},
 diff --git a/chrome/browser/chromeos/login/chrome_restart_request.cc b/chrome/browser/chromeos/login/chrome_restart_request.cc
-index 00dc967..d4db8df 100644
+index 00dc967..7c649b0 100644
 --- a/chrome/browser/chromeos/login/chrome_restart_request.cc
 +++ b/chrome/browser/chromeos/login/chrome_restart_request.cc
 @@ -19,6 +19,7 @@
@@ -81,7 +81,7 @@ index 00dc967..d4db8df 100644
 +#else
      ::switches::kDisableAcceleratedMjpegDecode,
      ::switches::kDisableAcceleratedVideoDecode,
-++#endif
++#endif
      ::switches::kDisableBlinkFeatures,
      ::switches::kDisableCastStreamingHWEncoding,
      ::switches::kDisableDistanceFieldText,
@@ -95,7 +95,7 @@ index 00dc967..d4db8df 100644
      ::switches::kDisableWebRtcHWEncoding,
  #endif
 diff --git a/chrome/browser/flag_descriptions.cc b/chrome/browser/flag_descriptions.cc
-index 03206c3..89418e4 100644
+index 03206c3..b0c28e2 100644
 --- a/chrome/browser/flag_descriptions.cc
 +++ b/chrome/browser/flag_descriptions.cc
 @@ -14,6 +14,13 @@ const char kAccelerated2dCanvasDescription[] =
@@ -128,7 +128,7 @@ index 03206c3..89418e4 100644
  
  const char kWebrtcHwH264EncodingName[] = "WebRTC hardware h264 video encoding";
  const char kWebrtcHwH264EncodingDescription[] =
-@@ -2410,7 +2419,7 @@ const char kTranslateNewUxDescription[] =
+@@ -2410,14 +2419,16 @@ const char kTranslateNewUxDescription[] =
  
  // Chrome OS -------------------------------------------------------------------
  
@@ -137,15 +137,15 @@ index 03206c3..89418e4 100644
  
  const char kAcceleratedMjpegDecodeName[] =
      "Hardware-accelerated mjpeg decode for captured frame";
-@@ -2736,7 +2745,7 @@ const char kWakeOnPacketsName[] = "Wake On Packets";
- const char kWakeOnPacketsDescription[] =
-     "Enables waking the device based on the receipt of some network packets.";
+ const char kAcceleratedMjpegDecodeDescription[] =
+     "Enable hardware-accelerated mjpeg decode for captured frame where "
+     "available.";
++#endif
  
--#endif  // defined(OS_CHROMEOS)
-+#endif  // defined(OS_CHROMEOS) || BUILDFLAG(USE_VAAPI)
- 
- // Random platform combinations -----------------------------------------------
- 
++#if defined(OS_CHROMEOS)
+ const char kAllowTouchpadThreeFingerClickName[] = "Touchpad three-finger-click";
+ const char kAllowTouchpadThreeFingerClickDescription[] =
+     "Enables touchpad three-finger-click as middle button.";
 diff --git a/chrome/browser/flag_descriptions.h b/chrome/browser/flag_descriptions.h
 index fa49d7e..d273eff 100644
 --- a/chrome/browser/flag_descriptions.h
@@ -182,57 +182,19 @@ index fa49d7e..d273eff 100644
  extern const char kAllowTouchpadThreeFingerClickName[];
  extern const char kAllowTouchpadThreeFingerClickDescription[];
  
-diff --git a/components/viz/service/main/viz_main_impl.cc b/components/viz/service/main/viz_main_impl.cc
-index 9066f83..99ebb7b 100644
---- a/components/viz/service/main/viz_main_impl.cc
-+++ b/components/viz/service/main/viz_main_impl.cc
-@@ -39,7 +39,7 @@ std::unique_ptr<base::Thread> CreateAndStartCompositorThread() {
-   auto thread = std::make_unique<base::Thread>("CompositorThread");
-   base::Thread::Options thread_options;
-   thread_options.message_loop_type = base::MessageLoop::TYPE_DEFAULT;
--#if defined(OS_ANDROID) || defined(OS_CHROMEOS)
-+#if defined(OS_LINUX)
-   thread_options.priority = base::ThreadPriority::DISPLAY;
- #endif
-   CHECK(thread->StartWithOptions(thread_options));
-@@ -51,7 +51,7 @@ std::unique_ptr<base::Thread> CreateAndStartIOThread() {
-   // It should be possible to use |main_task_runner_| for doing IO tasks.
-   base::Thread::Options thread_options(base::MessageLoop::TYPE_IO, 0);
-   thread_options.priority = base::ThreadPriority::NORMAL;
--#if defined(OS_ANDROID) || defined(OS_CHROMEOS)
-+#if defined(OS_LINUX)
-   // TODO(reveman): Remove this in favor of setting it explicitly for each
-   // type of process.
-   thread_options.priority = base::ThreadPriority::DISPLAY;
 diff --git a/content/browser/gpu/compositor_util.cc b/content/browser/gpu/compositor_util.cc
-index 4479fa5..fa2ae89 100644
+index 4479fa5..9405505 100644
 --- a/content/browser/gpu/compositor_util.cc
 +++ b/content/browser/gpu/compositor_util.cc
-@@ -98,7 +98,11 @@ const GpuFeatureData GetGpuFeatureData(size_t index, bool* eof) {
+@@ -98,7 +98,7 @@ const GpuFeatureData GetGpuFeatureData(size_t index, bool* eof) {
        {"video_decode",
         manager->GetFeatureStatus(
             gpu::GPU_FEATURE_TYPE_ACCELERATED_VIDEO_DECODE),
-+#if defined(OS_LINUX) && !defined(OS_CHROMEOS) && !defined(OS_ANDROID)
+-       command_line.HasSwitch(switches::kDisableAcceleratedVideoDecode),
 +       !command_line.HasSwitch(switches::kEnableAcceleratedVideo),
-+#else
-        command_line.HasSwitch(switches::kDisableAcceleratedVideoDecode),
-+#endif
         "Accelerated video decode has been disabled, either via blacklist,"
         " about:flags or the command line.",
         true},
-diff --git a/content/browser/gpu/gpu_data_manager_impl_private.cc b/content/browser/gpu/gpu_data_manager_impl_private.cc
-index d32f70d..22e22e5 100644
---- a/content/browser/gpu/gpu_data_manager_impl_private.cc
-+++ b/content/browser/gpu/gpu_data_manager_impl_private.cc
-@@ -637,7 +637,7 @@ void GpuDataManagerImplPrivate::AppendRendererCommandLine(
-     base::CommandLine* command_line) const {
-   DCHECK(command_line);
- 
--#if defined(OS_ANDROID)
-+#if !defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
-   // TODO(zmo): Move this to renderer side checking with GPU channel.
-   if (blacklisted_features_.count(
-           gpu::GPU_FEATURE_TYPE_ACCELERATED_VIDEO_DECODE) == 1) {
 diff --git a/content/browser/gpu/gpu_process_host.cc b/content/browser/gpu/gpu_process_host.cc
 index 046b3de..2991971 100644
 --- a/content/browser/gpu/gpu_process_host.cc
@@ -321,22 +283,6 @@ index 2aead99..ffce325 100644
      switches::kEnableWebRtcSrtpAesGcm,
      switches::kEnableWebRtcSrtpEncryptedHeaders,
      switches::kEnableWebRtcStunOrigin,
-diff --git a/content/browser/renderer_host/render_view_host_impl.cc b/content/browser/renderer_host/render_view_host_impl.cc
-index 88480cc..48e9afd 100644
---- a/content/browser/renderer_host/render_view_host_impl.cc
-+++ b/content/browser/renderer_host/render_view_host_impl.cc
-@@ -424,7 +424,11 @@ WebPreferences RenderViewHostImpl::ComputeWebkitPrefs() {
-   prefs.save_previous_document_resources = GetSavePreviousDocumentResources();
- 
-   prefs.accelerated_video_decode_enabled =
-+#if defined(OS_LINUX) && !defined(OS_CHROMEOS) && !defined(OS_ANDROID)
-+      command_line.HasSwitch(switches::kEnableAcceleratedVideo);
-+#else
-       !command_line.HasSwitch(switches::kDisableAcceleratedVideoDecode);
-+#endif
- 
-   std::string autoplay_policy = media::GetEffectiveAutoplayPolicy(command_line);
-   if (autoplay_policy == switches::autoplay::kNoUserGestureRequiredPolicy) {
 diff --git a/content/browser/webrtc/webrtc_media_recorder_browsertest.cc b/content/browser/webrtc/webrtc_media_recorder_browsertest.cc
 index 3d815a2..2c96048 100644
 --- a/content/browser/webrtc/webrtc_media_recorder_browsertest.cc
@@ -356,18 +302,27 @@ index 3d815a2..2c96048 100644
  
   private:
 diff --git a/content/gpu/BUILD.gn b/content/gpu/BUILD.gn
-index 4c50c53..b13b711 100644
+index 4c50c53..11727c9 100644
 --- a/content/gpu/BUILD.gn
 +++ b/content/gpu/BUILD.gn
-@@ -6,6 +6,7 @@ import("//build/config/jumbo.gni")
- import("//build/config/ui.gni")
- import("//gpu/vulkan/features.gni")
+@@ -8,6 +8,16 @@ import("//gpu/vulkan/features.gni")
  import("//media/media_options.gni")
-+import("//media/gpu/args.gni")
  import("//ui/ozone/ozone.gni")
  
++# Unfortunately, using public_configs from media/gpu breaks unbundling
++import("//media/gpu/args.gni")
++if (is_desktop_linux && use_vaapi) {
++  import("//build/config/linux/pkg_config.gni")
++
++  pkg_config("libva_config") {
++    packages = [ "libva" ]
++  }
++}
++
  # See //content/BUILD.gn for how this works.
-@@ -49,7 +50,6 @@ target(link_target_type, "gpu_sources") {
+ group("gpu") {
+   visibility = [ "//content/*" ]  # This is an internal content API.
+@@ -49,7 +59,6 @@ target(link_target_type, "gpu_sources") {
    ]
  
    configs += [ "//content:content_implementation" ]
@@ -375,17 +330,17 @@ index 4c50c53..b13b711 100644
    deps = [
      "//base",
      "//base/third_party/dynamic_annotations",
-@@ -125,4 +125,8 @@ target(link_target_type, "gpu_sources") {
+@@ -125,4 +134,8 @@ target(link_target_type, "gpu_sources") {
    if (is_desktop_linux && (!is_chromecast || is_cast_desktop_build)) {
      configs += [ "//build/config/linux/dri" ]
    }
 +
-+  if (is_desktop_linux && use_vaapi) {
-+    public_configs = [ "//media/gpu:libva_config" ]
++  if (is_desktop_linux) {
++    public_configs = [ ":libva_config" ]
 +  }
  }
 diff --git a/content/gpu/gpu_main.cc b/content/gpu/gpu_main.cc
-index fbb5378..e242b16 100644
+index fbb5378..efc3b73 100644
 --- a/content/gpu/gpu_main.cc
 +++ b/content/gpu/gpu_main.cc
 @@ -277,7 +277,7 @@ int GpuMain(const MainFunctionParams& parameters) {
@@ -406,95 +361,40 @@ index fbb5378..e242b16 100644
    io_thread_priority = base::ThreadPriority::DISPLAY;
  #endif
  
+@@ -366,10 +366,8 @@ bool StartSandboxLinux(gpu::GpuWatchdogThread* watchdog_thread,
+   sandbox_options.accelerated_video_decode_enabled =
+       !gpu_prefs.disable_accelerated_video_decode;
+ 
+-#if defined(OS_CHROMEOS)
+   sandbox_options.vaapi_accelerated_video_encode_enabled =
+       !gpu_prefs.disable_vaapi_accelerated_video_encode;
+-#endif
+ 
+   bool res = service_manager::SandboxLinux::GetInstance()->InitializeSandbox(
+       service_manager::SandboxTypeFromCommandLine(
 diff --git a/content/gpu/gpu_sandbox_hook_linux.cc b/content/gpu/gpu_sandbox_hook_linux.cc
-index 3d94882..74d0ab9 100644
+index 3d94882..5146cc9 100644
 --- a/content/gpu/gpu_sandbox_hook_linux.cc
 +++ b/content/gpu/gpu_sandbox_hook_linux.cc
-@@ -48,22 +48,6 @@ inline bool IsChromeOS() {
- #endif
- }
- 
--inline bool IsArchitectureX86_64() {
--#if defined(__x86_64__)
--  return true;
--#else
--  return false;
--#endif
--}
--
--inline bool IsArchitectureI386() {
--#if defined(__i386__)
--  return true;
--#else
--  return false;
--#endif
--}
--
- inline bool IsArchitectureArm() {
- #if defined(ARCH_CPU_ARM_FAMILY)
-   return true;
-@@ -259,51 +243,6 @@ void LoadV4L2Libraries() {
-   }
- }
- 
--void LoadStandardLibraries(
--    const service_manager::SandboxSeccompBPF::Options& options) {
--  if (IsArchitectureX86_64() || IsArchitectureI386()) {
--    // Accelerated video dlopen()'s some shared objects
--    // inside the sandbox, so preload them now.
--    if (options.vaapi_accelerated_video_encode_enabled ||
--        options.accelerated_video_decode_enabled) {
--      if (IsLibVAVersion2()) {
--        if (IsArchitectureX86_64()) {
--          dlopen("/usr/lib64/va/drivers/i965_drv_video.so", dlopen_flag);
+@@ -269,7 +269,6 @@ void LoadStandardLibraries(
+       if (IsLibVAVersion2()) {
+         if (IsArchitectureX86_64()) {
+           dlopen("/usr/lib64/va/drivers/i965_drv_video.so", dlopen_flag);
 -          dlopen("/usr/lib64/va/drivers/hybrid_drv_video.so", dlopen_flag);
--        } else if (IsArchitectureI386()) {
--          dlopen("/usr/lib/va/drivers/i965_drv_video.so", dlopen_flag);
--        }
--        dlopen("libva.so.2", dlopen_flag);
--#if defined(USE_OZONE)
--        dlopen("libva-drm.so.2", dlopen_flag);
--#endif
--      } else {
--        // If we are linked against libva 1, we have two cases to handle:
--        // - the sysroot includes both libva 1 and 2, in which case the drivers
--        //   are in /usr/lib{64}/va1/
--        // - the sysroot only includes libva 1, in which case the drivers are
--        //   are in /usr/lib{64}/va/
--        // This is ugly, but temporary until all builds have switched to libva 2.
--        if (IsArchitectureX86_64()) {
--          if (!dlopen("/usr/lib64/va1/drivers/i965_drv_video.so", dlopen_flag))
--            dlopen("/usr/lib64/va/drivers/i965_drv_video.so", dlopen_flag);
+         } else if (IsArchitectureI386()) {
+           dlopen("/usr/lib/va/drivers/i965_drv_video.so", dlopen_flag);
+         }
+@@ -287,8 +286,6 @@ void LoadStandardLibraries(
+         if (IsArchitectureX86_64()) {
+           if (!dlopen("/usr/lib64/va1/drivers/i965_drv_video.so", dlopen_flag))
+             dlopen("/usr/lib64/va/drivers/i965_drv_video.so", dlopen_flag);
 -          if (!dlopen("/usr/lib64/va1/drivers/hybrid_drv_video.so", dlopen_flag))
 -            dlopen("/usr/lib64/va/drivers/hybrid_drv_video.so", dlopen_flag);
--        } else if (IsArchitectureI386()) {
--          if (!dlopen("/usr/lib/va1/drivers/i965_drv_video.so", dlopen_flag))
--            dlopen("/usr/lib/va/drivers/i965_drv_video.so", dlopen_flag);
--        }
--        dlopen("libva.so.1", dlopen_flag);
--#if defined(USE_OZONE)
--        dlopen("libva-drm.so.1", dlopen_flag);
--#elif defined(USE_X11)
--        dlopen("libva-x11.so.1", dlopen_flag);
--#endif
--      }
--    }
--  }
--}
--
- bool LoadLibrariesForGpu(
-     const service_manager::SandboxSeccompBPF::Options& options) {
-   if (IsChromeOS()) {
-@@ -316,7 +255,6 @@ bool LoadLibrariesForGpu(
-     if (options.use_amd_specific_policies)
-       return LoadAmdGpuLibraries();
-   }
--  LoadStandardLibraries(options);
-   return true;
- }
- 
+         } else if (IsArchitectureI386()) {
+           if (!dlopen("/usr/lib/va1/drivers/i965_drv_video.so", dlopen_flag))
+             dlopen("/usr/lib/va/drivers/i965_drv_video.so", dlopen_flag);
 diff --git a/content/public/browser/gpu_utils.cc b/content/public/browser/gpu_utils.cc
-index 008fdc6..a30325e 100644
+index 008fdc6..cad5581 100644
 --- a/content/public/browser/gpu_utils.cc
 +++ b/content/public/browser/gpu_utils.cc
 @@ -7,6 +7,7 @@
@@ -505,7 +405,7 @@ index 008fdc6..a30325e 100644
  #include "content/browser/gpu/gpu_process_host.h"
  #include "content/public/common/content_features.h"
  #include "content/public/common/content_switches.h"
-@@ -55,12 +56,18 @@ const gpu::GpuPreferences GetGpuPreferencesFromCommandLine() {
+@@ -55,12 +56,19 @@ const gpu::GpuPreferences GetGpuPreferencesFromCommandLine() {
    gpu_preferences.in_process_gpu =
        command_line->HasSwitch(switches::kInProcessGPU);
    gpu_preferences.disable_accelerated_video_decode =
@@ -515,10 +415,11 @@ index 008fdc6..a30325e 100644
        command_line->HasSwitch(switches::kDisableAcceleratedVideoDecode);
 -#if defined(OS_CHROMEOS)
 +#endif
-   gpu_preferences.disable_vaapi_accelerated_video_encode =
 +#if defined(OS_LINUX) && !defined(OS_CHROMEOS)
-+     !command_line->HasSwitch(switches::kEnableAcceleratedVideo);
-+#else
++  gpu_preferences.disable_vaapi_accelerated_video_encode =
++      !command_line->HasSwitch(switches::kEnableAcceleratedVideo);
++#elif defined(OS_CHROMEOS)
+   gpu_preferences.disable_vaapi_accelerated_video_encode =
        command_line->HasSwitch(switches::kDisableVaapiAcceleratedVideoEncode);
  #endif
 -#if BUILDFLAG(ENABLE_WEBRTC)
@@ -629,22 +530,6 @@ index dc8f543..4f1c250 100644
        encoder_factory.reset(new RTCVideoEncoderFactory(gpu_factories));
      }
    }
-diff --git a/content/renderer/render_thread_impl.cc b/content/renderer/render_thread_impl.cc
-index b1c79cd..d9588a6 100644
---- a/content/renderer/render_thread_impl.cc
-+++ b/content/renderer/render_thread_impl.cc
-@@ -1471,7 +1471,11 @@ media::GpuVideoAcceleratorFactories* RenderThreadImpl::GetGpuFactories() {
-   scoped_refptr<base::SingleThreadTaskRunner> media_task_runner =
-       GetMediaThreadTaskRunner();
-   const bool enable_video_accelerator =
-+#if defined(OS_LINUX) && !defined(OS_CHROMEOS)
-+      cmd_line->HasSwitch(switches::kEnableAcceleratedVideo) &&
-+#else
-       !cmd_line->HasSwitch(switches::kDisableAcceleratedVideoDecode) &&
-+#endif
-       (gpu_channel_host->gpu_feature_info()
-            .status_values[gpu::GPU_FEATURE_TYPE_ACCELERATED_VIDEO_DECODE] ==
-        gpu::kGpuFeatureStatusEnabled);
 diff --git a/gpu/config/software_rendering_list.json b/gpu/config/software_rendering_list.json
 index 628a17d..4abee26 100644
 --- a/gpu/config/software_rendering_list.json
@@ -667,49 +552,32 @@ index 628a17d..4abee26 100644
      {
        "id": 50,
        "description": "Disable VMware software renderer on older Mesa",
-diff --git a/media/filters/BUILD.gn b/media/filters/BUILD.gn
-index c2ce34f..e92f995 100644
---- a/media/filters/BUILD.gn
-+++ b/media/filters/BUILD.gn
-@@ -4,6 +4,7 @@
- 
- import("//media/media_options.gni")
- import("//third_party/libaom/options.gni")
-+import("//media/gpu/args.gni")
- 
- source_set("filters") {
-   # Do not expand the visibility here without double-checking with OWNERS, this
-@@ -201,7 +202,7 @@ source_set("filters") {
-     deps += [ "//media/base/android" ]
-   }
- 
--  if (current_cpu != "arm" && is_linux) {
-+  if (use_vaapi) {
-     sources += [
-       "h264_bitstream_buffer.cc",
-       "h264_bitstream_buffer.h",
 diff --git a/media/gpu/BUILD.gn b/media/gpu/BUILD.gn
-index 5e1fb40..717968f 100644
+index 5e1fb40..e4afcf3 100644
 --- a/media/gpu/BUILD.gn
 +++ b/media/gpu/BUILD.gn
-@@ -24,6 +24,12 @@ if (is_mac) {
+@@ -24,6 +24,14 @@ if (is_mac) {
    import("//build/config/mac/mac_sdk.gni")
  }
  
-+import("//build/config/linux/pkg_config.gni")
++if (is_desktop_linux && use_vaapi) {
++  import("//build/config/linux/pkg_config.gni")
 +
-+pkg_config("libva_config") {
-+  packages = [ "libva" ]
++  pkg_config("libva_config") {
++    packages = [ "libva" ]
++  }
 +}
 +
  if (use_vaapi) {
    action("libva_generate_stubs") {
      extra_header = "vaapi/va_stub_header.fragment"
-@@ -302,6 +308,7 @@ component("gpu") {
+@@ -302,6 +310,9 @@ component("gpu") {
          "v4l2/tegra_v4l2_device.h",
        ]
      }
-+    public_configs = [ ":libva_config" ]
++    if (is_desktop_linux) {
++      public_configs = [ ":libva_config" ]
++    }
    }
  
    if (use_vaapi) {
@@ -726,41 +594,19 @@ index 2e72cb5..aa290b8 100644
    capabilities.supported_profiles =
        DXVAVideoDecodeAccelerator::GetSupportedProfiles(gpu_preferences,
 diff --git a/media/gpu/vaapi/vaapi_wrapper.cc b/media/gpu/vaapi/vaapi_wrapper.cc
-index e1dde3c..f1bc8a9 100644
+index e1dde3c..ae47370 100644
 --- a/media/gpu/vaapi/vaapi_wrapper.cc
 +++ b/media/gpu/vaapi/vaapi_wrapper.cc
-@@ -190,16 +190,6 @@ VADisplayState* VADisplayState::Get() {
-   return display_state;
- }
+@@ -207,11 +207,7 @@ bool VADisplayState::PostSandboxInitialization() {
  
--// static
--void VADisplayState::PreSandboxInitialization() {
--  const char kDriRenderNode0Path[] = "/dev/dri/renderD128";
--  base::File drm_file = base::File(
--      base::FilePath::FromUTF8Unsafe(kDriRenderNode0Path),
--      base::File::FLAG_OPEN | base::File::FLAG_READ | base::File::FLAG_WRITE);
--  if (drm_file.IsValid())
--    VADisplayState::Get()->SetDrmFd(drm_file.GetPlatformFile());
--}
--
- // static
- bool VADisplayState::PostSandboxInitialization() {
-   const std::string va_suffix(std::to_string(VA_MAJOR_VERSION + 1));
-@@ -598,6 +588,17 @@ bool VASupportedProfiles::GetMaxResolution_Locked(
-   return true;
- }
+   paths[kModuleVa].push_back(std::string("libva.so.") + va_suffix);
+   paths[kModuleVa_drm].push_back(std::string("libva-drm.so.") + va_suffix);
+-#if defined(USE_X11)
+-  // libva-x11 does not exist on libva >= 2
+-  if (VA_MAJOR_VERSION == 0)
+-    paths[kModuleVa_x11].push_back("libva-x11.so.1");
+-#endif
++  paths[kModuleVa_x11].push_back(std::string("libva-x11.so.") + va_suffix);
  
-+// static
-+void VADisplayState::PreSandboxInitialization() {
-+  const char kDriRenderNode0Path[] = "/dev/dri/renderD128";
-+  base::File drm_file = base::File(
-+      base::FilePath::FromUTF8Unsafe(kDriRenderNode0Path),
-+      base::File::FLAG_OPEN | base::File::FLAG_READ | base::File::FLAG_WRITE);
-+  if (drm_file.IsValid())
-+    VADisplayState::Get()->SetDrmFd(drm_file.GetPlatformFile());
-+  VASupportedProfiles::Get();  // dlopen all necessary libraries
-+}
-+
- // Maps VideoCodecProfile enum values to VaProfile values. This function
- // includes a workaround for https://crbug.com/345569: if va_profile is h264
- // baseline and it is not supported, we try constrained baseline.
+   const bool success = InitializeStubs(paths);
+   if (!success) {
