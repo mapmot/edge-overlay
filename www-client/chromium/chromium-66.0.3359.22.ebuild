@@ -16,7 +16,7 @@ SRC_URI="https://commondatastorage.googleapis.com/chromium-browser-official/${P}
 
 LICENSE="BSD"
 SLOT="0"
-KEYWORDS="~amd64 ~arm ~arm64 ~x86"
+KEYWORDS="~amd64 ~arm64 ~x86"
 IUSE="component-build cups gnome-keyring +hangouts jumbo-build kerberos neon pic +proprietary-codecs pulseaudio selinux +suid +system-ffmpeg +system-icu +system-libvpx +tcmalloc vaapi widevine"
 RESTRICT="!system-ffmpeg? ( proprietary-codecs? ( bindist ) )"
 
@@ -102,6 +102,7 @@ DEPEND="${COMMON_DEPEND}
 	sys-apps/hwids[usb(+)]
 	>=sys-devel/bison-2.4.3
 	sys-devel/flex
+	>=sys-devel/clang-5
 	virtual/pkgconfig
 	dev-vcs/git
 	$(python_gen_any_dep '
@@ -150,24 +151,26 @@ PATCHES=(
 	"${FILESDIR}/chromium-webrtc-r0.patch"
 	"${FILESDIR}/chromium-memcpy-r0.patch"
 	"${FILESDIR}/chromium-clang-r2.patch"
-	"${FILESDIR}/chromium-gn-r0.patch"
-	"${FILESDIR}/chromium-vulkan-r0.patch"
-	"${FILESDIR}/chromium-gcc-r0.patch"
-	"${FILESDIR}/enable_vaapi_on_linux_2.diff"
+	"${FILESDIR}/chromium-math.h-r0.patch"
+	"${FILESDIR}/chromium-stdint.patch"
+	"${FILESDIR}/chromium-clang-r4.patch"
+	"${FILESDIR}/chromium-ffmpeg-r1.patch"
+	"${FILESDIR}/chromium-ffmpeg-clang.patch"
+	"${FILESDIR}/chromium-66.0.3359.22-vaapi.patch"
 )
 
 pre_build_checks() {
-	if [[ ${MERGE_TYPE} != binary ]]; then
-		local -x CPP="$(tc-getCXX) -E"
-		if tc-is-clang && ! version_is_at_least "3.9.1" "$(clang-fullversion)"; then
-			# bugs: #601654
-			die "At least clang 3.9.1 is required"
-		fi
-		if tc-is-gcc && ! version_is_at_least 5.0 "$(gcc-version)"; then
-			# bugs: #535730, #525374, #518668, #600288, #627356
-			die "At least gcc 5.0 is required"
-		fi
-	fi
+	#if [[ ${MERGE_TYPE} != binary ]]; then
+	#	local -x CPP="$(tc-getCXX) -E"
+	#	if tc-is-clang && ! version_is_at_least "3.9.1" "$(clang-fullversion)"; then
+	#		# bugs: #601654
+	#		die "At least clang 3.9.1 is required"
+	#	fi
+	#	if tc-is-gcc && ! version_is_at_least 5.0 "$(gcc-version)"; then
+	#		# bugs: #535730, #525374, #518668, #600288, #627356
+	#		die "At least gcc 5.0 is required"
+	#	fi
+	#fi
 
 	# Check build requirements, bug #541816 and bug #471810 .
 	CHECKREQS_MEMORY="3G"
@@ -212,6 +215,8 @@ src_prepare() {
 		base/third_party/valgrind
 		base/third_party/xdg_mime
 		base/third_party/xdg_user_dirs
+		buildtools/third_party/libc++
+		buildtools/third_party/libc++abi
 		chrome/third_party/mozilla_security_manager
 		courgette/third_party
 		net/third_party/mozilla_security_manager
@@ -224,6 +229,10 @@ src_prepare() {
 		third_party/angle/src/third_party/compiler
 		third_party/angle/src/third_party/libXNVCtrl
 		third_party/angle/src/third_party/trace_event
+		third_party/angle/third_party/glslang
+		third_party/angle/third_party/spirv-headers
+		third_party/angle/third_party/spirv-tools
+		third_party/angle/third_party/vulkan-validation-layers
 		third_party/blink
 		third_party/boringssl
 		third_party/boringssl/src/third_party/fiat
@@ -275,13 +284,13 @@ src_prepare() {
 		third_party/libwebm
 		third_party/libxml/chromium
 		third_party/libyuv
+		third_party/llvm
 		third_party/lss
 		third_party/lzma_sdk
 		third_party/markupsafe
 		third_party/mesa
 		third_party/metrics_proto
 		third_party/modp_b64
-		third_party/mt19937ar
 		third_party/node
 		third_party/node/node_modules/polymer-bundler/lib/third_party/UglifyJS2
 		third_party/openmax_dl
@@ -289,13 +298,13 @@ src_prepare() {
 		third_party/pdfium
 		third_party/pdfium/third_party/agg23
 		third_party/pdfium/third_party/base
-		third_party/pdfium/third_party/build
 		third_party/pdfium/third_party/bigint
 		third_party/pdfium/third_party/freetype
 		third_party/pdfium/third_party/lcms
 		third_party/pdfium/third_party/libopenjpeg20
 		third_party/pdfium/third_party/libpng16
 		third_party/pdfium/third_party/libtiff
+		third_party/pdfium/third_party/skia_shared
 		third_party/ply
 		third_party/polymer
 		third_party/protobuf
@@ -313,6 +322,7 @@ src_prepare() {
 		third_party/swiftshader
 		third_party/swiftshader/third_party/llvm-subzero
 		third_party/swiftshader/third_party/subzero
+		third_party/unrar
 		third_party/usrsctp
 		third_party/vulkan
 		third_party/vulkan-validation-layers
@@ -374,6 +384,33 @@ src_configure() {
 	python_setup
 
 	local myconf_gn=""
+
+	# Make sure the build system will use the right tools, bug #340795.
+	tc-export AR CC CXX NM
+
+	if ! tc-is-clang; then
+		# Force clang since gcc is pretty broken at the moment.
+		CC=clang
+		CXX=clang++
+		strip-unsupported-flags
+	fi
+
+	if tc-is-clang; then
+		myconf_gn+=" is_clang=true clang_use_chrome_plugins=false"
+	else
+		myconf_gn+=" is_clang=false"
+	fi
+
+	# Define a custom toolchain for GN
+	myconf_gn+=" custom_toolchain=\"//build/toolchain/linux/unbundle:default\""
+
+	if tc-is-cross-compiler; then
+		tc-export BUILD_{AR,CC,CXX,NM}
+		myconf_gn+=" host_toolchain=\"//build/toolchain/linux/unbundle:host\""
+		myconf_gn+=" v8_snapshot_toolchain=\"//build/toolchain/linux/unbundle:host\""
+	else
+		myconf_gn+=" host_toolchain=\"//build/toolchain/linux/unbundle:default\""
+	fi
 
 	# GN needs explicit config for Debug/Release as opposed to inferring it from build directory.
 	myconf_gn+=" is_debug=false"
@@ -446,12 +483,6 @@ src_configure() {
 
 	myconf_gn+=" fieldtrial_testing_like_official_build=true"
 
-	if tc-is-clang; then
-		myconf_gn+=" is_clang=true clang_use_chrome_plugins=false"
-	else
-		myconf_gn+=" is_clang=false"
-	fi
-
 	# Never use bundled gold binary. Disable gold linker flags for now.
 	# Do not use bundled clang.
 	# Trying to use gold results in linker crash.
@@ -516,22 +547,8 @@ src_configure() {
 		fi
 	fi
 
-	# Make sure the build system will use the right tools, bug #340795.
-	tc-export AR CC CXX NM
-
-	# Define a custom toolchain for GN
-	myconf_gn+=" custom_toolchain=\"//build/toolchain/linux/unbundle:default\""
-
-	if tc-is-cross-compiler; then
-		tc-export BUILD_{AR,CC,CXX,NM}
-		myconf_gn+=" host_toolchain=\"//build/toolchain/linux/unbundle:host\""
-		myconf_gn+=" v8_snapshot_toolchain=\"//build/toolchain/linux/unbundle:host\""
-	else
-		myconf_gn+=" host_toolchain=\"//build/toolchain/linux/unbundle:default\""
-	fi
-
 	# https://bugs.gentoo.org/588596
-	append-cxxflags $(test-flags-CXX -fno-delete-null-pointer-checks)
+	#append-cxxflags $(test-flags-CXX -fno-delete-null-pointer-checks)
 
 	# Bug 491582.
 	export TMPDIR="${WORKDIR}/temp"
@@ -565,6 +582,8 @@ src_compile() {
 	# Calling this here supports resumption via FEATURES=keepwork
 	python_setup
 
+	#"${EPYTHON}" tools/clang/scripts/update.py --force-local-build --gcc-toolchain /usr --skip-checkout --use-system-cmake --without-android || die
+
 	# Build mksnapshot and pax-mark it.
 	local x
 	for x in mksnapshot v8_context_snapshot_generator; do
@@ -576,10 +595,6 @@ src_compile() {
 			pax-mark m "out/Release/${x}"
 		fi
 	done
-
-	# Work around circular dep issue
-	# https://chromium-review.googlesource.com/c/chromium/src/+/617768
-	eninja -C out/Release gen/ui/accessibility/ax_enums.h
 
 	# Even though ninja autodetects number of CPUs, we respect
 	# user's options, for debugging with -j 1 or any other reason.
@@ -638,8 +653,10 @@ src_install() {
 	doins -r out/Release/locales
 	doins -r out/Release/resources
 
-	insinto "${CHROMIUM_HOME}/swiftshader"
-	doins out/Release/swiftshader/*.so
+	if [[ -d out/Release/swiftshader ]]; then
+		insinto "${CHROMIUM_HOME}/swiftshader"
+		doins out/Release/swiftshader/*.so
+	fi
 
 	# Install icons and desktop entry.
 	local branding size
