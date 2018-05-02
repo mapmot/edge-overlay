@@ -1,4 +1,4 @@
-# Copyright 1999-2017 Gentoo Foundation
+# Copyright 1999-2018 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 EAPI=6
@@ -20,8 +20,8 @@ LICENSE="GPL-3"
 SLOT="0"
 KEYWORDS="~amd64 ~arm ~arm64 ~ppc64 ~x86"
 
-# TODO: QtNfc
-IUSE="bluetooth dbus debug declarative designer doc examples gles2 gui help location
+# TODO: QtNetworkAuth, QtNfc
+IUSE="bluetooth dbus debug declarative designer examples gles2 gui help location
 	multimedia network opengl positioning printsupport sensors serialport sql svg
 	testlib webchannel webengine webkit websockets widgets x11extras xmlpatterns"
 
@@ -42,9 +42,9 @@ REQUIRED_USE="
 	serialport? ( gui )
 	sql? ( widgets )
 	svg? ( gui widgets )
-	testlib? ( gui widgets )
+	testlib? ( widgets )
 	webchannel? ( network )
-	webengine? ( network widgets? ( webchannel ) )
+	webengine? ( network widgets? ( printsupport webchannel ) )
 	webkit? ( gui network printsupport widgets )
 	websockets? ( network )
 	widgets? ( gui )
@@ -52,11 +52,11 @@ REQUIRED_USE="
 "
 
 # Minimal supported version of Qt.
-QT_PV="5.6.0:5"
+QT_PV="5.9.3:5"
 
 RDEPEND="
 	${PYTHON_DEPS}
-	>=dev-python/sip-4.19.3:=[${PYTHON_USEDEP}]
+	>=dev-python/sip-4.19.6:=[${PYTHON_USEDEP}]
 	>=dev-qt/qtcore-${QT_PV}
 	>=dev-qt/qtxml-${QT_PV}
 	bluetooth? ( >=dev-qt/qtbluetooth-${QT_PV} )
@@ -81,7 +81,7 @@ RDEPEND="
 	testlib? ( >=dev-qt/qttest-${QT_PV} )
 	webchannel? ( >=dev-qt/qtwebchannel-${QT_PV} )
 	webengine? ( >=dev-qt/qtwebengine-${QT_PV}[widgets?] )
-	webkit? ( >=dev-qt/qtwebkit-${QT_PV}[printsupport] )
+	webkit? ( >=dev-qt/qtwebkit-5.9:5[printsupport] )
 	websockets? ( >=dev-qt/qtwebsockets-${QT_PV} )
 	widgets? ( >=dev-qt/qtwidgets-${QT_PV} )
 	x11extras? ( >=dev-qt/qtx11extras-${QT_PV} )
@@ -94,6 +94,7 @@ DEPEND="${RDEPEND}
 S=${WORKDIR}/${MY_P}
 
 DOCS=( "${S}"/{ChangeLog,NEWS} )
+PATCHES=( "${FILESDIR}/${P}-timeline.patch" )
 
 pyqt_use_enable() {
 	use "$1" || return
@@ -143,7 +144,7 @@ src_configure() {
 			$(pyqt_use_enable svg)
 			$(pyqt_use_enable testlib QtTest)
 			$(pyqt_use_enable webchannel QtWebChannel)
-			$(pyqt_use_enable webengine QtWebEngineCore $(usex widgets QtWebEngineWidgets ''))
+			$(pyqt_use_enable webengine QtWebEngine QtWebEngineCore $(usex widgets QtWebEngineWidgets ''))
 			$(pyqt_use_enable webkit QtWebKit QtWebKitWidgets)
 			$(pyqt_use_enable websockets QtWebSockets)
 			$(pyqt_use_enable widgets)
@@ -151,7 +152,6 @@ src_configure() {
 			$(pyqt_use_enable xmlpatterns QtXmlPatterns)
 		)
 		echo "${myconf[@]}"
-		ln -s "${S}"/config-tests
 		"${myconf[@]}" || die
 
 		eqmake5 -recursive ${PN}.pro
@@ -188,7 +188,6 @@ src_install() {
 	python_foreach_impl run_in_build_dir installation
 
 	einstalldocs
-	use doc && dodoc -r doc/html
 
 	if use examples; then
 		insinto /usr/share/doc/${PF}
