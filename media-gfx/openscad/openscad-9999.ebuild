@@ -22,6 +22,7 @@ CDEPEND="media-gfx/opencsg
 	dev-qt/qtgui
 	dev-qt/qtopengl
 	dev-qt/qtconcurrent
+	dev-qt/qtmultimedia
 	dev-cpp/eigen:3
 	dev-libs/glib:2
 	dev-libs/gmp:0=
